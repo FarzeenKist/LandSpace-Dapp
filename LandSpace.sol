@@ -11,14 +11,13 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
 
     Counters.Counter private _tokenIdCounter;
 
-    address payable owner;
+    address payable contractOwner;
 
     uint auctionDuration;
     uint auctions;
 
     uint cancelAuctionPenalty;
 
-    uint balance;
 
     event Start(address indexed owner, uint auctionId, uint tokenId);
     event Bid(address indexed sender, uint amount);
@@ -30,7 +29,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         auctionDuration = 10800;
         auctions = 0;
         cancelAuctionPenalty = 1 ether;
-        owner = payable(msg.sender);
+        contractOwner = payable(msg.sender);
     }
 
     struct Land {
@@ -70,7 +69,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         _;
     }
 
-    function cancelBidHelper(uint auctionId){
+    function cancelBidHelper(uint auctionId) internal{
         Land storage currentLand = lands[allAuctions[auctionId]];
         currentLand.currentBid = 0;
         currentLand.bidder = msg.sender;
@@ -81,21 +80,21 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
     }
 
 
-    function makeBidHelper(uint auctionId){
+    function makeBidHelper(uint auctionId) internal{
         Land storage currentLand = lands[allAuctions[auctionId]];
         currentLand.currentBid = msg.value;
         currentLand.bidder = msg.sender;
         emit Bid(currentLand.bidder, currentLand.currentBid);
     }
 
-    function endAuctionHelper(uint auctionId){
+    function endAuctionHelper(uint auctionId, uint _balanceBidder) internal{
         Land storage currentLand = lands[allAuctions[auctionId]];
-        lands[alllAuctions[auctionId]].safeTransferFrom(currentLand.owner, currentLand.bidder, alllAuctions[auctionId]);
+        safeTransferFrom(currentLand.owner, currentLand.bidder, allAuctions[auctionId]);
         currentLand.forSale = false;
         currentLand.owner = payable(msg.sender);
         currentLand.startingPrice = 0;
         currentLand.instantSellingPrice = 0;
-        emit End(currentLand.bidder, balanceBidder);
+        emit End(currentLand.bidder, _balanceBidder);
     }
 
     function safeMint(address to, string memory uri) public {
@@ -120,7 +119,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         Land storage currentLand = lands[tokenId];
         require(msg.sender == currentLand.owner && msg.sender == currentLand.bidder, "You are not the owner");
         require(currentLand.forSale == false, "This land is already in an auction");
-        require(currentLand.startingPrice && currentLand.instantSellingPrice == 0, "Land isn't available");
+        require(currentLand.startingPrice == 0 && currentLand.instantSellingPrice == 0, "Land isn't available");
         currentLand.forSale = true; 
         currentLand.startingPrice = _startingPrice;
         currentLand.instantSellingPrice = _instantSellingPrice;
@@ -134,13 +133,13 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
     function cancelAuction(uint auctionId) public payable isOwner(auctionId) onSale(auctionId) isOver(auctionId){
         Land storage currentLand = lands[allAuctions[auctionId]];
         auctionEnd[auctionId] = 0;
-        (bool success,) = owner.call{value: cancelAuctionPenalty}("");
+        (bool success,) = contractOwner.call{value: cancelAuctionPenalty}("");
         require(success, "Transfer failed");
-        if(currentLand.bidder && currentLand.currentBid > 0) {
+        if(currentLand.bidder != address(0) && currentLand.currentBid > 0) {
             uint refundValue = currentLand.currentBid;
             currentLand.currentBid = 0;
-            (bool success,) = payable(currentLand.bidder).call{value: refundValue}("");
-            require(success, "Transfer failed");
+            (bool sent,) = payable(currentLand.bidder).call{value: refundValue}("");
+            require(sent, "Transfer failed");
             cancelBidHelper(auctionId);
         }else {
             cancelBidHelper(auctionId);
@@ -161,13 +160,14 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
             makeBidHelper(auctionId);
         }else {
             currentLand.currentBid = msg.value;
-            balanceBidder = currentBid;
+            balanceBidder = currentLand.currentBid;
             currentLand.currentBid = 0;
             (bool success,) = currentLand.owner.call{value: balanceBidder}("");
             require(success, "You have failed to make full payment");
             currentLand.bidder = msg.sender;
-            _approve(msg.sender, alllAuctions[auctionId]);
-            endAuctionHelper(auctionId);
+            _approve(msg.sender, allAuctions[auctionId]);
+            endAuctionHelper(auctionId, balanceBidder);
+        }
     }
 
     function endAuction(uint auctionId) public payable isOwner(auctionId) onSale(auctionId){
@@ -178,11 +178,24 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         currentLand.currentBid = 0;
         (bool success,) = currentLand.owner.call{value: balanceBidder}("");
         require(success, "You have failed to make full payment");
-        endAuctionHelper(auctionId);
+        endAuctionHelper(auctionId, balanceBidder);
+    }
+
+
+    function getLand(uint tokenId) public view returns (Land memory) {
+        return lands[tokenId];
+    }
+
+    function getcancelAuctionPenalty() public view returns (uint) {
+        return cancelAuctionPenalty;
     }
 
     // The following functions are overrides required by Solidity.
 
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
+        super._burn(tokenId);
+    }
+    
     function tokenURI(uint256 tokenId)
         public
         view
