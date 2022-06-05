@@ -15,7 +15,8 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
 
     uint auctionDuration;
     uint auctions;
-
+    
+    // penalty paid to contract owner when cancelling an auction
     uint cancelAuctionPenalty;
 
 
@@ -42,6 +43,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
     }
 
     mapping(uint => Land) lands;
+    // mapping that keeps track of auction ending time
     mapping(uint => uint) auctionEnd;
     mapping(uint => uint ) allAuctions;
 
@@ -65,10 +67,12 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
     modifier canBid(uint auctionId) {
         Land storage currentLand = lands[allAuctions[auctionId]];
         require(msg.sender != currentLand.owner, "you can't bid on your land");
+        require(msg.sender != currentLand.bidder, "You can't outbid yourself");
         require(msg.value > currentLand.currentBid && msg.value >= currentLand.startingPrice, "You need to bid higher than the current bid");
         _;
     }
 
+    // utility function to reset some struct values when cancelling an auction
     function cancelBidHelper(uint auctionId) internal{
         Land storage currentLand = lands[allAuctions[auctionId]];
         currentLand.currentBid = 0;
@@ -79,14 +83,15 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         emit Cancel(currentLand.owner, auctionId, allAuctions[auctionId]);
     }
 
-
+    // utility function to assign new bidder and new bid
     function makeBidHelper(uint auctionId) internal{
         Land storage currentLand = lands[allAuctions[auctionId]];
         currentLand.currentBid = msg.value;
         currentLand.bidder = msg.sender;
         emit Bid(currentLand.bidder, currentLand.currentBid);
     }
-
+    
+    //utility function to make adjustment for new owner and to transfer ownership of NFT
     function endAuctionHelper(uint auctionId, uint _balanceBidder) internal{
         Land storage currentLand = lands[allAuctions[auctionId]];
         safeTransferFrom(currentLand.owner, currentLand.bidder, allAuctions[auctionId]);
@@ -115,6 +120,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         _setTokenURI(tokenId, uri);
     }
 
+    // users needs to enter the tokenId, a starting price and an instant selling price to start a new auction
     function startAuction(uint tokenId, uint _startingPrice, uint _instantSellingPrice) public {
         Land storage currentLand = lands[tokenId];
         require(msg.sender == currentLand.owner && msg.sender == currentLand.bidder, "You are not the owner");
@@ -129,12 +135,13 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         emit Start(currentLand.owner ,  auctions, tokenId);
     }
 
-    // couple of errors and need to add an if/else statement
+    // makes sure that owner is the one calling the function, that the NFT is on sale and that the auction isn't yet over
     function cancelAuction(uint auctionId) public payable isOwner(auctionId) onSale(auctionId) isOver(auctionId){
         Land storage currentLand = lands[allAuctions[auctionId]];
         auctionEnd[auctionId] = 0;
-        (bool success,) = contractOwner.call{value: cancelAuctionPenalty}("");
+        (bool success,) = contractOwner.call{value: cancelAuctionPenalty}(""); // penalty is paid to the contract owner
         require(success, "Transfer failed");
+        // runs only if there is a current bid on the NFT
         if(currentLand.bidder != address(0) && currentLand.currentBid > 0) {
             uint refundValue = currentLand.currentBid;
             currentLand.currentBid = 0;
@@ -142,34 +149,42 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
             require(sent, "Transfer failed");
             cancelBidHelper(auctionId);
         }else {
-            cancelBidHelper(auctionId);
+            cancelBidHelper(auctionId); // reset some values of currentLand
         }
     }
 
 
-
+    // makes sure that current user is viable to bid and that the auction isn't over
     function makeBid(uint auctionId) public payable isOver(auctionId) canBid(auctionId){
         Land storage currentLand = lands[allAuctions[auctionId]];
         uint balanceBidder = currentLand.currentBid;
+        
+        // this runs for every bid except if the bid is equal to the instant selling price
         if(balanceBidder > 0 && msg.value < currentLand.instantSellingPrice){
             currentLand.currentBid = 0;
-            (bool success,) = payable(currentLand.bidder).call{value: balanceBidder}("");
+            (bool success,) = payable(currentLand.bidder).call{value: balanceBidder}(""); // refund to previous bidder
             require(success, "Your bidding payment has failed");
             makeBidHelper(auctionId);
+            
+         // this only runs for the first bidder   
         }else if (balanceBidder == 0 && msg.value < currentLand.instantSellingPrice){
             makeBidHelper(auctionId);
+            
+         // this runs if the new bid is equal to the instant selling price    
         }else {
             currentLand.currentBid = msg.value;
             balanceBidder = currentLand.currentBid;
             currentLand.currentBid = 0;
-            (bool success,) = currentLand.owner.call{value: balanceBidder}("");
+            (bool success,) = currentLand.owner.call{value: balanceBidder}(""); // selling bid is paid to the owner
             require(success, "You have failed to make full payment");
             currentLand.bidder = msg.sender;
+            //NFT is approved for transfer of ownership
             _approve(msg.sender, allAuctions[auctionId]);
             endAuctionHelper(auctionId, balanceBidder);
         }
     }
 
+     // Makes sure the owner is the one calling this function, the NFT is on sale and that the auction is already over
     function endAuction(uint auctionId) public payable isOwner(auctionId) onSale(auctionId){
         require(auctionId >=0 , "enter a correct auction id");
         Land storage currentLand = lands[allAuctions[auctionId]];
@@ -190,6 +205,10 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
 
     function getCancelAuctionPenalty() public view returns (uint) {
         return cancelAuctionPenalty;
+    }
+    
+    function getauctionEnd(uint auctionId) public view returns (uint) {
+        return auctionEnd[auctionId];
     }
 
     // The following functions are overrides required by Solidity.
