@@ -102,9 +102,8 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         emit End(currentLand.bidder, _balanceBidder);
     }
 
-    function safeMint(address to, string memory uri) public {
-        uint256 tokenId = _tokenIdCounter.current();
-        _tokenIdCounter.increment();
+    // utility function to create Land
+    function createLand(uint tokenId, address to) internal {
         uint currentBid = 0;
         uint startingPrice = 0;
         uint instantSellingPrice = 0;
@@ -116,6 +115,12 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
                                 instantSellingPrice,
                                 false
                              );
+    }
+
+    function safeMint(address to, string memory uri) public {
+        uint256 tokenId = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
+        createLand(tokenId, to);
         _safeMint(to, tokenId);
         _setTokenURI(tokenId, uri);
     }
