@@ -38,7 +38,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         uint currentBid;
         uint startingPrice;
         uint instantSellingPrice;
-        bool forSale; 
+        bool forSale;
     }
 
     mapping(uint => Land) lands;
@@ -120,7 +120,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         require(msg.sender == currentLand.owner && msg.sender == currentLand.bidder, "You are not the owner");
         require(currentLand.forSale == false, "This land is already in an auction");
         require(currentLand.startingPrice == 0 && currentLand.instantSellingPrice == 0, "Land isn't available");
-        currentLand.forSale = true; 
+        currentLand.forSale = true;
         currentLand.startingPrice = _startingPrice;
         currentLand.instantSellingPrice = _instantSellingPrice;
         auctionEnd[auctions] = block.timestamp + auctionDuration;
@@ -171,6 +171,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
     }
 
     function endAuction(uint auctionId) public payable isOwner(auctionId) onSale(auctionId){
+        require(auctionId >=0 , "enter a correct auction id");
         Land storage currentLand = lands[allAuctions[auctionId]];
         require(block.timestamp >= auctionEnd[auctionId], "There is still time before you can end the auction");
         require(currentLand.currentBid != 0 && currentLand.bidder != currentLand.owner, "Your land isn't on sale");
@@ -183,10 +184,11 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
 
 
     function getLand(uint tokenId) public view returns (Land memory) {
+        require(tokenId >=0 , "enter a correct token id");
         return lands[tokenId];
     }
 
-    function getcancelAuctionPenalty() public view returns (uint) {
+    function getCancelAuctionPenalty() public view returns (uint) {
         return cancelAuctionPenalty;
     }
 
@@ -195,7 +197,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
     function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
         super._burn(tokenId);
     }
-    
+
     function tokenURI(uint256 tokenId)
         public
         view
