@@ -64,6 +64,14 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         _;
     }
 
+    modifier canAuction(uint tokenId) {
+        Land storage currentLand = lands[tokenId];
+        require(msg.sender == currentLand.owner && msg.sender == currentLand.bidder, "You are not the owner");
+        require(currentLand.forSale == false, "This land is already in an auction");
+        require(currentLand.startingPrice == 0 && currentLand.instantSellingPrice == 0, "Land isn't available");
+        _;
+    }
+
     modifier canBid(uint auctionId) {
         Land storage currentLand = lands[allAuctions[auctionId]];
         require(msg.sender != currentLand.owner, "you can't bid on your land");
@@ -126,11 +134,8 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
     }
 
     // users needs to enter the tokenId, a starting price and an instant selling price to start a new auction
-    function startAuction(uint tokenId, uint _startingPrice, uint _instantSellingPrice) public {
+    function startAuction(uint tokenId, uint _startingPrice, uint _instantSellingPrice) public canAuction(tokenId) {
         Land storage currentLand = lands[tokenId];
-        require(msg.sender == currentLand.owner && msg.sender == currentLand.bidder, "You are not the owner");
-        require(currentLand.forSale == false, "This land is already in an auction");
-        require(currentLand.startingPrice == 0 && currentLand.instantSellingPrice == 0, "Land isn't available");
         currentLand.forSale = true;
         currentLand.startingPrice = _startingPrice;
         currentLand.instantSellingPrice = _instantSellingPrice;
@@ -168,7 +173,7 @@ contract LandSpace is ERC721, ERC721URIStorage, Ownable {
         if(balanceBidder > 0 && msg.value < currentLand.instantSellingPrice){
             currentLand.currentBid = 0;
             (bool success,) = payable(currentLand.bidder).call{value: balanceBidder}(""); // refund to previous bidder
-            require(success, "Your bidding payment has failed");
+            require(success, "Payment to previous bidder failed");
             makeBidHelper(auctionId);
             
          // this only runs for the first bidder   
